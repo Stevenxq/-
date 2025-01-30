@@ -1,0 +1,150 @@
+import requests
+from collections import Counter
+from collections import defaultdict
+from datetime import datetime, timedelta
+import schedule
+import time
+
+
+token = ""  # 假设你已经从某个地方获取了 token
+url = ''# 预约单列表接口地址
+headers = \
+{
+    "Authorization": f"{token}"  # 添加 token 到请求头
+}
+
+response = requests.get(url, headers=headers)
+
+
+try:
+    # 检查是否返回了有效的 JSON 数据
+    if response.status_code == 200:
+        if not response.text.strip():  # 如果响应为空
+            print("响应为空")
+        else:
+            try:
+                # 尝试解析 JSON 数据
+                reg_data = response.json()
+                #print(f"解析后的数据: {reg_data}")
+            except ValueError as e:
+                print(f"JSON 解析失败: {e}")
+    else:
+        print(f"请求失败，状态码: {response.status_code}")
+
+except Exception as e:
+    print(f"发生错误: {e}")
+
+# 对提取的数据进行关键字段的筛选
+extracted_data = [
+    {'bookStartTime': entry['bookStartTime'], 'bookType': entry['bookType']}
+    for entry in reg_data['data']['content']
+]
+
+#print(extracted_data)
+#print("\n" + "-" * 40 + "\n")  # 分隔符，用于分行
+
+extracted_data1 = [
+    {'bookStartTime': entry['bookStartTime'], 'getOnAt': entry['getOnAt'], 'bookType': entry['bookType'],
+     'status': entry['status'], 'carId': entry['carId']}
+    for entry in reg_data['data']['content']
+]
+
+#print(extracted_data1)
+#print("\n" + "-" * 40 + "\n")  # 分隔符，用于分行
+
+# 定义查询起始时间
+start_time = '2025-01-01T00:00:00'
+end_time = '2025-12-09T00:00:00'
+
+# 筛选满足bookStartTime条件的数据
+filtered_entries = [
+    entry for entry in extracted_data
+    if start_time <= entry['bookStartTime'] <= end_time and entry['bookType'] != 2
+] # bookStartTime在查询起始时间内
+
+# 筛选满足getOnAt条件的数据
+filtered_entries1 = [
+    entry for entry in extracted_data1
+    #if start_time <= entry['getOnAt'] <= end_time and entry['getOnAt'] != 'None' and entry['bookType'] != 2 and entry['status'] == 3
+    if entry['getOnAt'] is not None and start_time <= entry['getOnAt'] <= end_time and entry['bookType'] != 2
+] # bgetOnAt在查询起始时间内
+
+# 筛选满足bookType=2条件的数据
+filtered_entries2 = [
+    entry for entry in extracted_data1
+    if start_time <= entry['bookStartTime'] <= end_time and entry['bookType'] == 2
+]
+
+# 统计满足条件的数量
+#count = len(filtered_entries)
+#count1 = len(filtered_entries1)
+#count2 = len(filtered_entries2)
+
+# 输出结果
+# print("满足累计预约人次条件的数据:", filtered_entries)
+# #print("满足累计预约人次条件的数量:", count)
+# print("\n" + "-" * 40 + "\n")  # 分隔符，用于区分每一天的数据
+# print("满足累计预约人次条件的数据1:", filtered_entries1)
+# #print("满足累计预约人次条件的数量1:", count1)
+# print("\n" + "-" * 40 + "\n")  # 分隔符，用于区分每一天的数据
+# print("满足处于维修中车辆的数据2:", filtered_entries2)
+# #print("满足累计预约人次条件的数量2:", count2)
+# print("\n" + "-" * 40 + "\n")  # 分隔符，用于区分每一天的数据
+# #print("满足处于维修中车辆的数量:", count2)
+
+# Extract only the dates
+#dates = [datetime.fromisoformat(entry['bookStartTime']).date() for entry in filtered_entries]
+
+# Extract dates from bookStartTime
+dates = [datetime.fromisoformat(entry['bookStartTime']).strftime('%Y-%m-%d') for entry in filtered_entries]
+
+# Count occurrences of each date
+date_counts = Counter(dates)
+
+# Sort by date in descending order
+sorted_date_counts = dict(sorted(date_counts.items(), key=lambda x: x[0], reverse=True))
+
+# Count occurrences by date
+#date_counts = Counter(dates)
+print(f"以下是 {start_time} 到 {end_time} 累计预约人次 的统计结果:")
+# Step 4: Print each result on a new line
+for date, count in sorted_date_counts.items():
+    print(f"{date}: {count} 人")
+print("\n" + "-" * 40 + "\n")  # 分隔符，用于区分每一天的数据
+#pprint(sorted_date_counts)
+
+# Extract dates from bookStartTime
+dates1 = [datetime.fromisoformat(entry['getOnAt']).strftime('%Y-%m-%d') for entry in filtered_entries1]
+
+# Count occurrences of each date
+date_counts1 = Counter(dates1)
+
+# Sort by date in descending order
+sorted_date_counts1 = dict(sorted(date_counts1.items(), key=lambda x: x[0], reverse=True))
+print(f"以下是 {start_time} 到 {end_time} 累积使用人次 的统计结果:")
+# Step 4: Print each result on a new line
+for date, count in sorted_date_counts1.items():
+    print(f"{date}: {count} 人")
+print("\n" + "-" * 40 + "\n")  # 分隔符，用于区分每一天的数据
+
+
+# Parse the date and group by date
+date_counts2 = defaultdict(set)
+
+# Extract dates from bookStartTime
+for entry in filtered_entries2:
+  dates2 = datetime.fromisoformat(entry['bookStartTime']).strftime('%Y-%m-%d')
+  date_counts2[dates2].add(entry['carId'])
+
+# Count occurrences of each date
+#date_counts2 = Counter(dates2)
+
+# Sort by date in descending order
+sorted_date_counts2 = dict(sorted(date_counts2.items(), key=lambda x: x[0], reverse=True))
+
+print(f"以下是 {start_time} 到 {end_time} 当日可用车辆数 的统计结果:")
+# Step 4: Print each result on a new line
+for date, car_ids in sorted_date_counts2.items():
+    #print(f"{date}: {count}")
+    print(f"{date}: {13 - len(car_ids)} cars")
+print("\n" + "-" * 40 + "\n")  # 分隔符，用于区分每一天的数据
